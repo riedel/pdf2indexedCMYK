@@ -10,12 +10,12 @@ with open(sys.argv[2], 'r') as f:
     file_lines = ''.join([''.join(['!!python/tuple ',x, '\n']) for x in f.readlines()])
 
 try:
-      colors=yaml.load(file_lines)
+      colors=yaml.load(file_lines, Loader=yaml.FullLoader)
 except yaml.YAMLError as exc:
         print(exc)
 
 def get_closest_color(c):
-    d=[np.linalg.norm(np.asarray(x)-np.asarray(c)) for x in colors.keys()]
+    d=[np.linalg.norm(np.asarray(x)/256.0-np.asarray(c)) for x in colors.keys()]
     return list(colors.values())[d.index(min(d))]
 
 
@@ -25,8 +25,10 @@ class Pdf:
         self.input = subprocess.Popen(["pdftk",fin,"output","-","uncompress"],
                          stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT)
-        self.output = subprocess.Popen(["gs", "-o", fout, "-sDEVICE=pdfwrite", "-sProcessColorModel=DeviceCMYK", "-sColorConversionStrategy=None", "-sColorConversionStrategyForImages=CMYK", "-sDownsampleMonoImages=false ", "-sDownsampleGrayImages=false ", "-sDownsampleColorImages=false ", "-sAutoFilterColorImages=false ", "-sAutoFilterGrayImages=false ", "-sColorImageFilter=/FlateEncode ", "-sGrayImageFilter=/FlateEncode ", "-dAutoRotatePages=/None ", "-"],stdin=subprocess.PIPE)
-
+#self.output = subprocess.Popen(["gs", "-o", fout, "-sDEVICE=pdfwrite",  "-"],stdin=subprocess.PIPE)
+#        self.output = subprocess.Popen(["gs", "-o", fout, "-sDEVICE=pdfwrite", "-sProcessColorModel=DeviceCMYK", "-sColorConversionStrategy=None", "-sColorConversionStrategyForImages=CMYK", "-sDownsampleMonoImages=false ", "-sDownsampleGrayImages=false ", "-sDownsampleColorImages=false ", "-sAutoFilterColorImages=false ", "-sAutoFilterGrayImages=false ", "-sColorImageFilter=/FlateEncode ", "-sGrayImageFilter=/FlateEncode ", "-dAutoRotatePages=/None ", "-"],stdin=subprocess.PIPE)
+        #self.output = subprocess.Popen(["gs", "-o", fout, "-sDEVICE=pdfwrite", "-sProcessColorModel=DeviceCMYK",  "-sColorConversionStrategyForImages=CMYK", "-sColorConversionStrategy=LeaveColorUnchanged",  "-"],stdin=subprocess.PIPE)
+        self.output = subprocess.Popen(["pdftk", "-", "output", fout ,  "compress"],stdin=subprocess.PIPE)
     def __enter__(self):
         return self
 
@@ -43,17 +45,17 @@ class Pdf:
 replaced_colors={}
 with Pdf(sys.argv[1],sys.argv[3]) as pdf:
     for line in pdf.read():
-        rgb=re.compile(b'(.* )?([01]\.?[0-9]*) ([01].?[0-9]*) ([01].?[0-9]*) (RG|rg)(\r\n)$')
+        rgb=re.compile(b'(.* )?([01].?[0-9]*) ([01].?[0-9]*) ([01].?[0-9]*) (RG|rg)(.*)')
         match=re.match(rgb,line)
         if match:
-            #sys.stderr.buffer.write(line)
+            sys.stderr.buffer.write(line)
             old=(float(match.group(2)),float(match.group(3)),float(match.group(4)))
             c=get_closest_color(old)
             replaced_colors[old]=c
             newcolor=(match.group(1) if match.group(1) else b'') +'{0[0]} {0[1]} {0[2]} {0[3]}'.format(c).encode('UTF-8')
             newcolor+=b' k' if match.group(5)==b'rg' else b' K'
             newcolor+=match.group(6)
-            #sys.stderr.buffer.write(newcolor)
+            sys.stderr.buffer.write(newcolor)
             line=re.sub(rgb,newcolor,line)
         pdf.write(line)
 
